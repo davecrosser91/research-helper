@@ -26,6 +26,19 @@ wheels = [
 ]
 
 [[package]]
+name = "arxiv"
+version = "2.1.3"
+source = { registry = "https://artifacts.eurodata.de/repository/eurodata-pypi/simple" }
+dependencies = [
+    { name = "feedparser" },
+    { name = "requests" },
+]
+sdist = { url = "https://artifacts.eurodata.de/repository/eurodata-pypi/packages/arxiv/2.1.3/arxiv-2.1.3.tar.gz", hash = "sha256:32365221994d2cf05657c1fadf63a26efc8ccdec18590281ee03515bfef8bc4e" }
+wheels = [
+    { url = "https://artifacts.eurodata.de/repository/eurodata-pypi/packages/arxiv/2.1.3/arxiv-2.1.3-py3-none-any.whl", hash = "sha256:6f43673ab770a9e848d7d4fc1894824df55edeac3c3572ea280c9ba2e3c0f39f" },
+]
+
+[[package]]
 name = "certifi"
 version = "2025.1.31"
 source = { registry = "https://artifacts.eurodata.de/repository/eurodata-pypi/simple" }
@@ -133,6 +146,18 @@ source = { registry = "https://artifacts.eurodata.de/repository/eurodata-pypi/si
 sdist = { url = "https://artifacts.eurodata.de/repository/eurodata-pypi/packages/exceptiongroup/1.2.2/exceptiongroup-1.2.2.tar.gz", hash = "sha256:47c2edf7c6738fafb49fd34290706d1a1a2f4d1c6df275526b62cbb4aa5393cc" }
 wheels = [
     { url = "https://artifacts.eurodata.de/repository/eurodata-pypi/packages/exceptiongroup/1.2.2/exceptiongroup-1.2.2-py3-none-any.whl", hash = "sha256:3111b9d131c238bec2f8f516e123e14ba243563fb135d3fe885990585aa7795b" },
+]
+
+[[package]]
+name = "feedparser"
+version = "6.0.11"
+source = { registry = "https://artifacts.eurodata.de/repository/eurodata-pypi/simple" }
+dependencies = [
+    { name = "sgmllib3k" },
+]
+sdist = { url = "https://artifacts.eurodata.de/repository/eurodata-pypi/packages/feedparser/6.0.11/feedparser-6.0.11.tar.gz", hash = "sha256:c9d0407b64c6f2a065d0ebb292c2b35c01050cc0dc33757461aaabdc4c4184d5" }
+wheels = [
+    { url = "https://artifacts.eurodata.de/repository/eurodata-pypi/packages/feedparser/6.0.11/feedparser-6.0.11-py3-none-any.whl", hash = "sha256:0be7ee7b395572b19ebeb1d6aafb0028dee11169f1c934e0ed67d54992f4ad45" },
 ]
 
 [[package]]
@@ -470,6 +495,7 @@ name = "research-buddy"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "arxiv" },
     { name = "openai-agents" },
     { name = "python-dotenv" },
     { name = "rich" },
@@ -477,6 +503,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "arxiv", specifier = ">=2.1.3" },
     { name = "openai-agents", specifier = ">=0.0.6" },
     { name = "python-dotenv", specifier = ">=1.0.1" },
     { name = "rich", specifier = ">=13.9.4" },
@@ -495,6 +522,12 @@ sdist = { url = "https://artifacts.eurodata.de/repository/eurodata-pypi/packages
 wheels = [
     { url = "https://artifacts.eurodata.de/repository/eurodata-pypi/packages/rich/13.9.4/rich-13.9.4-py3-none-any.whl", hash = "sha256:6049d5e6ec054bf2779ab3358186963bac2ea89175919d699e378b99738c2a90" },
 ]
+
+[[package]]
+name = "sgmllib3k"
+version = "1.0.0"
+source = { registry = "https://artifacts.eurodata.de/repository/eurodata-pypi/simple" }
+sdist = { url = "https://artifacts.eurodata.de/repository/eurodata-pypi/packages/sgmllib3k/1.0.0/sgmllib3k-1.0.0.tar.gz", hash = "sha256:7868fb1c8bfa764c1ac563d3cf369c381d1325d36124933a726f29fcdaa812e9" }
 
 [[package]]
 name = "sniffio"
