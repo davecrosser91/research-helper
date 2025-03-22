@@ -20,6 +20,7 @@ from research_agents.keyword_analysis_agent import KeywordAnalysisAgent
 from research_agents.search_execution_agent import search_execution_tool
 from research_agents.abstract_screening_agent import AbstractScreeningAgent, RelevanceScore
 from research_agents.keyword_refinement import KeywordRefinement, RefinementConfig
+from ..firebase_helper import init_firebase, push_to_firebase
 
 class WorkflowResult(BaseModel):
     """Complete results from the systematic review workflow."""
@@ -46,10 +47,16 @@ class SystematicReviewWorkflow:
         self.logger = logging.getLogger("systematic_review")
         self.state = WorkflowState.INITIALIZING
         
+        # Initialize Firebase
+        self.db = init_firebase()
+        
         # Initialize agents
         self.research_question_agent = ResearchQuestionAgent(client=openai_client)
         self.keyword_analysis_agent = KeywordAnalysisAgent(client=openai_client)
         self.abstract_agent = AbstractScreeningAgent(client=openai_client)
+        
+        # Initialize workflow ID
+        self.workflow_id = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     async def start_review(
         self,
@@ -58,54 +65,77 @@ class SystematicReviewWorkflow:
     ) -> WorkflowResult:
         """Start a new systematic review."""
         try:
-            self.logger.info(f"Starting systematic review for: {research_area}")
-            result = WorkflowResult(
-                research_question=FormulateQuestionOutput(question={"question": "", "sub_questions": []}, validation={}),
-                search_strategy=SearchStrategy(
-                    keywords=[],
-                    constraints={},
-                    metadata={}
-                )
+            result = WorkflowResult()
+            
+            # Store workflow initialization
+            push_to_firebase(
+                "workflows",
+                {
+                    "workflow_id": self.workflow_id,
+                    "research_area": research_area,
+                    "constraints": constraints,
+                    "state": self.state.value,
+                    "start_time": datetime.now().isoformat()
+                },
+                doc_id=self.workflow_id
             )
             
-            # Step 1: Formulate research question
-            print("\n📝 Step 1: Formulating Research Question...")
+            # Step 1: Research Question Formulation
+            print("\n🤔 Step 1: Formulating Research Questions...")
             self.state = WorkflowState.QUESTION_FORMULATION
-            question_input = FormulateQuestionInput(
-                research_area=research_area,
-                constraints=constraints
-            )
-            result.research_question = await self.research_question_agent.formulate_question(question_input)
-            self.logger.info("Research question formulated")
+            result.research_question = await self.research_question_agent.formulate_question(research_area)
             
-            # Step 2: Keyword analysis
+            # Store research question results
+            push_to_firebase(
+                "research_questions",
+                {
+                    "workflow_id": self.workflow_id,
+                    "question": result.research_question.model_dump(),
+                    "research_area": research_area
+                }
+            )
+            
+            # Step 2: Keyword Analysis
             print("\n🔍 Step 2: Analyzing Keywords...")
             self.state = WorkflowState.KEYWORD_ANALYSIS
-            result.search_strategy = await self.keyword_analysis_agent.analyze(
-                result.research_question.question.question,
-                context={
-                    "field": research_area,
-                    "sub_questions": result.research_question.question.sub_questions,
+            result.search_strategy = await self.keyword_analysis_agent.generate_strategy(
+                result.research_question,
+                constraints
+            )
+            
+            # Store keyword analysis results
+            push_to_firebase(
+                "keyword_analysis",
+                {
+                    "workflow_id": self.workflow_id,
+                    "search_strategy": result.search_strategy.model_dump(),
                     "constraints": constraints
                 }
             )
-            self.logger.info("Keyword analysis completed")
             
-            # Step 3: Keyword refinement
-            print("\n🎯 Step 3: Refining Keywords...")
+            # Step 3: Keyword Refinement
+            print("\n📊 Step 3: Refining Keywords...")
             self.state = WorkflowState.KEYWORD_REFINEMENT
+            
             refinement_config = RefinementConfig(
                 keywords=result.search_strategy.keywords,
                 papers_per_keyword=constraints.get("max_results", 50),
                 year_range=constraints.get("year_range", 3)
             )
-
             
             keyword_refinement = KeywordRefinement(refinement_config)
             result.search_strategy = await keyword_refinement.enhance_search_strategy(result.search_strategy)
             result.refinement_results = result.search_strategy.metadata.get("refinement_results")
-            print(f"Refinement results: {result.refinement_results}")
-            self.logger.info(f"Keyword refinement completed with {len(result.search_strategy.keywords)} keywords")
+            
+            # Store keyword refinement results
+            push_to_firebase(
+                "keyword_refinement",
+                {
+                    "workflow_id": self.workflow_id,
+                    "refined_strategy": result.search_strategy.model_dump(),
+                    "refinement_results": result.refinement_results
+                }
+            )
             
             # Step 4: Search for papers using scored keywords
             print("\n📚 Step 4: Searching ArXiv with Scored Keywords...")
@@ -126,10 +156,21 @@ class SystematicReviewWorkflow:
                     batches = json.loads(search_results)
                     for batch in batches:
                         papers.extend(batch["papers"])
+                        
+                        # Store search results batch
+                        push_to_firebase(
+                            "search_results",
+                            {
+                                "workflow_id": self.workflow_id,
+                                "keyword": keyword,
+                                "batch": batch
+                            }
+                        )
+                        
                 except Exception as e:
                     self.logger.error(f"Search failed for keyword: {keyword}. Error: {str(e)}")
-                    continue  # Continue with next keyword if one fails
-                    
+                    continue
+            
             # Deduplicate papers based on arxiv_id
             seen_papers = set()
             unique_papers = []
@@ -137,36 +178,19 @@ class SystematicReviewWorkflow:
                 if paper["arxiv_id"] not in seen_papers:
                     seen_papers.add(paper["arxiv_id"])
                     unique_papers.append(paper)
-                    
-            result.papers = unique_papers
-            result.search_stats = self._calculate_search_stats(unique_papers, result.search_strategy)
-            self._print_search_stats(result.search_stats)
-            self.logger.info(f"Found {len(unique_papers)} unique papers")
             
-            # Step 5: Screen papers using abstract_screening_tool
-            if unique_papers:
-                print("\n🔎 Step 5: Screening Papers...")
+            result.papers = unique_papers
+            print(f"\nFound {len(result.papers)} unique papers")
+            
+            # Step 5: Screen abstracts
+            if result.papers:
+                print("\n📖 Step 5: Screening Abstracts...")
                 self.state = WorkflowState.ABSTRACT_SCREENING
                 
-                # Prepare screening criteria
-                screening_args = {
-                    "papers": unique_papers,
-                    "criteria": {
-                        "criteria1": "it should be a paper that is related to the research question",
-                        "criteria2": "it should be actively published in the last 5 years",
-                        "criteria3": "it should be a peer-reviewed paper",
-                    }
-                }
+                screened_papers = await self.abstract_agent.screen_papers(result.papers)
                 
-                # Screen papers using the agent
-                screened_papers = await self.abstract_agent.screen_papers(
-                    papers=unique_papers,
-                    criteria=screening_args["criteria"],
-                    context={"research_question": result.research_question.question.question}
-                )
-                
-                # Format the results
-                screening_results = json.dumps([{
+                # Format and store screening results
+                screening_results = [{
                     "batch_id": "batch-1",
                     "papers": [paper.model_dump() for paper in screened_papers],
                     "batch_statistics": {
@@ -176,15 +200,52 @@ class SystematicReviewWorkflow:
                         "low_relevance": sum(1 for p in screened_papers if p.relevance_score < 0.4)
                     },
                     "timestamp": datetime.now().isoformat()
-                }])
-                result.screened_papers = json.loads(screening_results)
+                }]
+                
+                result.screened_papers = screening_results
+                
+                # Store screening results
+                push_to_firebase(
+                    "screening_results",
+                    {
+                        "workflow_id": self.workflow_id,
+                        "screening_results": screening_results
+                    }
+                )
             
             self.state = WorkflowState.COMPLETED
+            
+            # Store final workflow state
+            push_to_firebase(
+                "workflows",
+                {
+                    "workflow_id": self.workflow_id,
+                    "state": self.state.value,
+                    "end_time": datetime.now().isoformat(),
+                    "total_papers": len(result.papers) if result.papers else 0,
+                    "total_screened": len(screened_papers) if result.screened_papers else 0
+                },
+                doc_id=self.workflow_id
+            )
+            
             return result
             
         except Exception as e:
             self.state = WorkflowState.ERROR
             self.logger.error(f"Workflow error: {str(e)}")
+            
+            # Store error state
+            push_to_firebase(
+                "workflows",
+                {
+                    "workflow_id": self.workflow_id,
+                    "state": self.state.value,
+                    "error": str(e),
+                    "error_time": datetime.now().isoformat()
+                },
+                doc_id=self.workflow_id
+            )
+            
             raise RuntimeError(f"Workflow failed: {str(e)}") from e
             
     def _calculate_search_stats(self, papers: List[Dict[str, Any]], strategy: SearchStrategy) -> Dict[str, Any]:
