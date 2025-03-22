@@ -1,6 +1,8 @@
 import asyncio
 import json
 from datetime import datetime, timedelta
+from uuid import uuid4
+from agents import Runner, Context
 from workflow_orchestrator import workflow_orchestrator
 
 async def test_workflow():
@@ -29,9 +31,18 @@ async def test_workflow():
         print("\nDescription:")
         print(research_input['description'].strip())
         
-        # Execute workflow
-        result = await workflow_orchestrator.run(research_input)
-        data = json.loads(result)
+        # Create a trace ID for this workflow run
+        trace_id = f"research_workflow_{uuid4()}"
+        print(f"\nTrace ID: {trace_id}")
+        
+        # Execute workflow with tracing
+        result = await Runner.run(
+            workflow_orchestrator,
+            json.dumps(research_input),
+            context=Context(),
+            trace_id=trace_id
+        )
+        data = json.loads(result.final_output)
         
         # Print results in a structured format
         print("\n" + "="*80)
@@ -74,6 +85,13 @@ async def test_workflow():
             print("-" * 40)
         
         print("\nWorkflow completed successfully!")
+        print(f"Full trace available with ID: {trace_id}")
+        
+        # Print trace summary
+        print("\nTrace Summary:")
+        print(f"Total steps: {len(result.trace)}")
+        for step in result.trace:
+            print(f"- {step.type}: {step.name} ({step.status})")
         
     except Exception as e:
         print(f"Error during workflow execution: {str(e)}")

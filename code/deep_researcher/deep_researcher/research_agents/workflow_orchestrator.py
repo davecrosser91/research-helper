@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field
 import json
 import logging
 from datetime import datetime
-from agents import FunctionTool, Agent
+from agents import FunctionTool, Agent, Runner, Context
 
 from .research_question_agent import research_question_agent
 from .keyword_analysis_agent import keyword_analysis_agent
@@ -61,29 +61,39 @@ class ResearchOutput(BaseModel):
     statistics: Dict[str, Any]
     timestamp: datetime
 
-async def execute_research_workflow(_, args_json: str) -> str:
-    """Execute the complete research workflow"""
+async def execute_research_workflow(ctx: Context, agent: Agent, args_json: str) -> str:
+    """Execute the complete research workflow with tracing"""
     args = ResearchInput.model_validate_json(args_json)
     logger.info("Starting research workflow")
     
-    # Step 1: Generate Research Question
+    # Step 1: Generate Research Question with tracing
     logger.info("Step 1: Generating research question")
     research_question_input = {
         "description": args.description,
         "field": args.field
     }
-    research_question_result = await research_question_agent.run(research_question_input)
-    research_question_data = json.loads(research_question_result)
+    research_question_result = await Runner.run(
+        research_question_agent,
+        json.dumps(research_question_input),
+        context=ctx.context,
+        trace_id=f"{ctx.trace_id}/research_question" if ctx.trace_id else None
+    )
+    research_question_data = json.loads(research_question_result.final_output)
     
-    # Step 2: Keyword Analysis
+    # Step 2: Keyword Analysis with tracing
     logger.info("Step 2: Analyzing keywords")
     keyword_analysis_input = {
         "research_question": research_question_data["question"],
         "sub_questions": research_question_data["sub_questions"],
         "field": args.field
     }
-    keyword_analysis_result = await keyword_analysis_agent.run(keyword_analysis_input)
-    keyword_data = json.loads(keyword_analysis_result)
+    keyword_analysis_result = await Runner.run(
+        keyword_analysis_agent,
+        json.dumps(keyword_analysis_input),
+        context=ctx.context,
+        trace_id=f"{ctx.trace_id}/keyword_analysis" if ctx.trace_id else None
+    )
+    keyword_data = json.loads(keyword_analysis_result.final_output)
     
     # Step 3: Execute Search
     logger.info("Step 3: Executing search")
@@ -103,7 +113,7 @@ async def execute_research_workflow(_, args_json: str) -> str:
     for batch in search_data:
         papers.extend(batch["papers"])
     
-    # Step 4: Screen Abstracts
+    # Step 4: Screen Abstracts with tracing
     logger.info("Step 4: Screening abstracts")
     screening_query = {
         "papers": papers,
