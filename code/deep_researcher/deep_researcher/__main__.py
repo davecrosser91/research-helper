@@ -5,8 +5,8 @@ from rich.prompt import Prompt, Confirm
 from rich.table import Table
 from typing import Optional, Dict, Any
 
-from deep_researcher.workflow_manager import ResearchWorkflowManager
-from deep_researcher.models.base import ResearchQuestion, SearchStrategy, PaperResult
+from .workflow_manager import ResearchWorkflowManager
+from .models.base import ResearchQuestion, SearchStrategy, PaperResult
 
 app = typer.Typer()
 console = Console()
@@ -137,4 +137,4 @@ def main(
         raise typer.Exit(1)
 
 if __name__ == "__main__":
-    app()
+    app() 

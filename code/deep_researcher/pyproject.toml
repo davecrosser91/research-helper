@@ -1,16 +1,20 @@
 [project]
 name = "deep_researcher"
 version = "0.1.0"
-description = "A systematic literature review tool using AI agents"
+description = "An AI-powered research assistant for systematic literature reviews"
 authors = [
-    {name = "David Kreuzer", email = "david.kreuzer@example.com"},
+    {name = "Your Name", email = "your.email@example.com"},
 ]
 dependencies = [
-    "arxiv>=2.1.3",
-    "tenacity>=9.0.0",
+    "typer>=0.9.0",
+    "rich>=13.7.0",
+    "arxiv>=2.1.0",
+    "aiohttp>=3.9.0",
     "python-dotenv>=1.0.0",
 ]
 requires-python = ">=3.9"
+readme = "README.md"
+license = {text = "MIT"}
 
 [build-system]
 requires = ["pdm-backend"]
@@ -19,4 +23,6 @@ build-backend = "pdm.backend"
 [tool.pdm.dev-dependencies]
 test = [
     "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.1",
+    "pytest-cov>=4.1.0",
 ] 
