@@ -1,6 +1,9 @@
 from pydantic import BaseModel
+from dotenv import load_dotenv  
 
 from agents import Agent
+
+load_dotenv()
 
 PROMPT = (
     "You are a helpful research assistant. Given a query, come up with a set of web searches "

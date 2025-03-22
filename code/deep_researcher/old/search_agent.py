@@ -3,9 +3,14 @@ from pydantic import BaseModel, Field, field_validator
 from agents import FunctionTool, Agent
 import arxiv
 import json
+from dotenv import load_dotenv
+
 
 from agents import Agent, FunctionTool
 from agents.model_settings import ModelSettings
+
+load_dotenv()
+
 
 INSTRUCTIONS = (
     "You are a research assistant specialized in scientific literature. Given a search term, you search arXiv "
@@ -112,5 +117,6 @@ search_agent = Agent(
         "When given a research topic or question, you use the arxiv_search tool to find relevant papers. "
         "You format your responses clearly and highlight key findings."
     ),
+    model="gpt-4o-mini",
     tools=[arxiv_search_tool]
 )

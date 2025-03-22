@@ -2,6 +2,9 @@
 from pydantic import BaseModel
 
 from agents import Agent
+from dotenv import load_dotenv
+
+load_dotenv()
 
 PROMPT = (
     "You are a senior researcher tasked with writing a cohesive report for a research query. "
