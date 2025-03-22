@@ -215,21 +215,27 @@ async def screen_abstracts(_, args_json: str) -> str:
             relevance_score = calculate_relevance_score(paper, args.criteria)
             methodology = evaluate_methodology(paper['abstract'])
             
+            # Normalize relevance score to be between 0 and 1
+            normalized_score = relevance_score.value / max(enum.value for enum in RelevanceScore)
+            
             result = ScreeningResult(
-                relevance_score=relevance_score.value,
-                inclusion_criteria={},
-                priority_rank=0,
-                rationale=""
+                relevance_score=normalized_score,
+                inclusion_criteria={
+                    "meets_relevance_threshold": relevance_score.value >= args.criteria.min_relevance_score.value,
+                    "has_required_methodology": methodology in args.criteria.methodology_types
+                },
+                priority_rank=1,  # Default to 1, will be updated based on sorting
+                rationale=f"Relevance score: {relevance_score.name}, Methodology: {methodology.value}"
             )
             screening_results.append(result)
         
-        # Identify themes for the batch
-        batch_themes = identify_themes(batch_papers)
-        
-        # Update results with themes and priority ranking
+        # Sort by relevance score and update priority ranks
         screening_results.sort(key=lambda x: x.relevance_score, reverse=True)
         for rank, result in enumerate(screening_results, 1):
             result.priority_rank = rank
+        
+        # Identify themes for the batch
+        batch_themes = identify_themes(batch_papers)
         
         # Create batch result
         batch = ScreeningBatch(
@@ -239,13 +245,13 @@ async def screen_abstracts(_, args_json: str) -> str:
             batch_statistics={
                 "total_papers": len(screening_results),
                 "high_relevance": sum(1 for r in screening_results 
-                                    if r.relevance_score == RelevanceScore.HIGH.value),
+                                    if r.relevance_score >= 0.75),
                 "medium_relevance": sum(1 for r in screening_results 
-                                      if r.relevance_score == RelevanceScore.MEDIUM.value),
+                                      if 0.5 <= r.relevance_score < 0.75),
                 "low_relevance": sum(1 for r in screening_results 
-                                   if r.relevance_score == RelevanceScore.LOW.value),
+                                   if 0.25 <= r.relevance_score < 0.5),
                 "irrelevant": sum(1 for r in screening_results 
-                                if r.relevance_score == RelevanceScore.IRRELEVANT.value),
+                                if r.relevance_score < 0.25),
             },
             timestamp=datetime.now()
         )

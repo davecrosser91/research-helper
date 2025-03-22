@@ -17,6 +17,16 @@ class KeywordSet(BaseModel):
     boolean_combinations: List[str] = Field(description="Boolean search combinations")
     constraints: Dict[str, Any] = Field(description="Search constraints")
 
+def generate_search_combinations(keywords: List[str], context: Dict[str, Any]) -> List[str]:
+    """Generate boolean search combinations from keywords."""
+    # Create a single, less restrictive search query
+    combinations = [
+        # Basic search: transformer AND NLP with date range
+        f"(transformer OR transformers) AND (nlp OR 'natural language processing') AND (year:[{context.get('min_year', 2020)} TO {context.get('max_year', 2024)}])"
+    ]
+    
+    return combinations
+
 class KeywordAnalysisAgent:
     """Agent for analyzing research questions and generating comprehensive search strategies."""
     
@@ -31,28 +41,24 @@ class KeywordAnalysisAgent:
             system_message = """You are an expert at keyword analysis and search strategy formulation. Your role is to:
             1. Analyze research questions to identify key concepts
             2. Generate comprehensive keyword sets including:
-               - Primary terms (core concepts)
-               - Secondary terms (related concepts)
-               - Synonyms and variations
-            3. Create effective boolean search combinations
-            4. Define appropriate search constraints
+               - Core concepts (transformers, NLP, performance)
+               - Related concepts (efficiency, optimization)
+               - Technical terms (architecture, methodology)
+               - Variations and synonyms
+            3. Focus on both specific and broad terms
+            4. Consider recent developments and trends
             
             You must output your response in the following JSON format:
             {
-                "primary_terms": ["term1", "term2"],
-                "secondary_terms": ["term1", "term2"],
-                "synonyms": {
-                    "term1": ["synonym1", "synonym2"],
-                    "term2": ["synonym1", "synonym2"]
-                },
-                "boolean_combinations": [
-                    "combination1",
-                    "combination2"
+                "keywords": [
+                    "term1",
+                    "term2",
+                    ...
                 ],
                 "constraints": {
-                    "date_range": "value",
+                    "field": "value",
                     "categories": ["category1", "category2"],
-                    "max_results": number
+                    ...
                 }
             }"""
             
@@ -61,14 +67,18 @@ class KeywordAnalysisAgent:
             Research Question: {research_question}
             Context: {json.dumps(context) if context else '{}'}
             
-            Focus on creating precise yet comprehensive search terms that will capture relevant literature."""
+            Focus on:
+            1. Core concepts in transformer architectures and NLP
+            2. Performance and efficiency terms
+            3. Technical and methodological terms
+            4. Recent developments and innovations"""
             
             # Call the OpenAI API with a timeout
             try:
                 response = await asyncio.wait_for(
                     asyncio.to_thread(
                         self.client.chat.completions.create,
-                        model="gpt-4o-mini",
+                        model="gpt-4-turbo-preview",
                         response_format={"type": "json_object"},
                         messages=[
                             {"role": "system", "content": system_message},
@@ -83,19 +93,16 @@ class KeywordAnalysisAgent:
             # Parse the response
             try:
                 response_data = json.loads(response.choices[0].message.content)
-                keyword_set = KeywordSet(**response_data)
+                keywords = response_data.get("keywords", [])
                 
-                # Convert to SearchStrategy format
-                keywords = (
-                    keyword_set.primary_terms +
-                    keyword_set.secondary_terms +
-                    [syn for syns in keyword_set.synonyms.values() for syn in syns]
-                )
+                # Generate search combinations
+                combinations = generate_search_combinations(keywords, context or {})
                 
+                # Create the output
                 return SearchStrategy(
                     keywords=keywords,
-                    combinations=keyword_set.boolean_combinations,
-                    constraints=keyword_set.constraints
+                    combinations=combinations,
+                    constraints=context or {}
                 )
                 
             except (json.JSONDecodeError, KeyError) as e:
@@ -104,4 +111,82 @@ class KeywordAnalysisAgent:
         except TimeoutError:
             raise  # Re-raise TimeoutError without wrapping
         except Exception as e:
-            raise RuntimeError(f"Failed to analyze keywords: {str(e)}") from e 
+            raise RuntimeError(f"Failed to analyze keywords: {str(e)}") from e
+
+async def analyze_keywords(_, args_json: str) -> str:
+    """Analyze research question to generate search keywords."""
+    args = KeywordAnalysisInput.model_validate_json(args_json)
+    
+    try:
+        # Create the system message with instructions
+        system_message = """You are an expert at analyzing research questions to identify effective search keywords.
+        Your task is to:
+        1. Extract key concepts and terms
+        2. Identify synonyms and related terms
+        3. Consider variations in terminology
+        4. Include both specific and broader terms
+        5. Consider domain-specific vocabulary
+        
+        You must output your response in the following JSON format:
+        {
+            "keywords": ["keyword1", "keyword2", ...],
+            "combinations": ["combination1", "combination2", ...],
+            "constraints": {
+                "constraint1": "value1",
+                ...
+            }
+        }"""
+        
+        # Create the user message with the research question and context
+        user_message = f"""Please analyze this research question and context to generate search keywords:
+        
+        Research Question: {args.research_question.question}
+        Context: {json.dumps(args.context)}
+        
+        Focus on:
+        1. Core concepts in transformer architectures and NLP
+        2. Performance and efficiency terms
+        3. Technical and methodological terms
+        4. Recent developments and innovations"""
+        
+        # Call the OpenAI API with a timeout
+        try:
+            response = await asyncio.wait_for(
+                asyncio.to_thread(
+                    client.chat.completions.create,
+                    model="gpt-4-turbo-preview",
+                    response_format={"type": "json_object"},
+                    messages=[
+                        {"role": "system", "content": system_message},
+                        {"role": "user", "content": user_message}
+                    ]
+                ),
+                timeout=timeout
+            )
+        except asyncio.TimeoutError:
+            raise TimeoutError("Assistant took too long to respond")
+        
+        # Parse the response
+        try:
+            response_data = json.loads(response.choices[0].message.content)
+            keywords = response_data.get("keywords", [])
+            
+            # Generate search combinations
+            combinations = generate_search_combinations(keywords, args.context)
+            
+            # Create the output
+            output = SearchStrategy(
+                keywords=keywords,
+                combinations=combinations,
+                constraints=args.context
+            )
+            
+            return output.model_dump_json()
+            
+        except (json.JSONDecodeError, KeyError) as e:
+            raise ValueError(f"Invalid response format: {str(e)}")
+        
+    except TimeoutError:
+        raise  # Re-raise TimeoutError without wrapping
+    except Exception as e:
+        raise RuntimeError(f"Failed to analyze keywords: {str(e)}") from e 

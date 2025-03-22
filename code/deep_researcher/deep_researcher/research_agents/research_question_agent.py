@@ -10,15 +10,14 @@ load_dotenv()
 from .types import (
     FormulateQuestionInput,
     FormulateQuestionOutput,
-    ResearchQuestion,
-    WorkflowState
+    Question,
+    ResearchQuestion
 )
 
 class QuestionResponse(BaseModel):
     """Response format for research question formulation."""
     question: str = Field(description="The main research question")
     sub_questions: List[str] = Field(description="List of related sub-questions")
-    scope: Dict[str, Any] = Field(description="The scope and boundaries of the research")
 
 class ValidationResponse(BaseModel):
     """Validation response for FINER criteria."""
@@ -63,11 +62,7 @@ class ResearchQuestionAgent:
             {
                 "question": {
                     "question": "The main research question",
-                    "sub_questions": ["Sub-question 1", "Sub-question 2"],
-                    "scope": {
-                        "key1": "value1",
-                        "key2": "value2"
-                    }
+                    "sub_questions": ["Sub-question 1", "Sub-question 2"]
                 },
                 "validation": {
                     "feasible": true,
@@ -105,9 +100,15 @@ class ResearchQuestionAgent:
             # Parse the response
             try:
                 response_data = json.loads(response.choices[0].message.content)
+                agent_response = AgentResponse(**response_data)
+                
+                # Convert to FormulateQuestionOutput format
                 return FormulateQuestionOutput(
-                    question=ResearchQuestion(**response_data["question"]),
-                    validation=response_data["validation"]
+                    question=Question(
+                        question=agent_response.question.question,
+                        sub_questions=agent_response.question.sub_questions
+                    ),
+                    validation=agent_response.validation.model_dump()
                 )
             except (json.JSONDecodeError, KeyError) as e:
                 raise ValueError(f"Invalid response format: {str(e)}")

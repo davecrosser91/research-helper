@@ -236,6 +236,6 @@ search_execution_tool = FunctionTool(
 search_execution_agent = Agent(
     name="ArXiv Search Execution Agent",
     instructions=INSTRUCTIONS,
-    model="gpt-4-turbo",
+    model="gpt-4o-mini",
     tools=[search_execution_tool]
 ) 

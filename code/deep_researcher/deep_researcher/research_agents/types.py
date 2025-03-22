@@ -4,15 +4,14 @@ from typing import Dict, List, Any, Optional
 from pydantic import BaseModel, Field
 
 class WorkflowState(Enum):
-    """States for the systematic review workflow."""
-    INITIALIZING = auto()
-    QUESTION_FORMULATION = auto()
-    KEYWORD_ANALYSIS = auto()
-    SEARCH_EXECUTION = auto()
-    ABSTRACT_SCREENING = auto()
-    REPORT_GENERATION = auto()
-    COMPLETED = auto()
-    ERROR = auto()
+    """States of the systematic review workflow."""
+    INITIALIZING = "initializing"
+    QUESTION_FORMULATION = "question_formulation"
+    KEYWORD_ANALYSIS = "keyword_analysis"
+    PAPER_SEARCH = "paper_search"
+    ABSTRACT_SCREENING = "abstract_screening"
+    COMPLETED = "completed"
+    ERROR = "error"
 
 class SearchStrategy(BaseModel):
     """Search strategy with keywords and constraints."""
@@ -21,11 +20,15 @@ class SearchStrategy(BaseModel):
     constraints: Dict[str, Any] = Field(default_factory=dict, description="Search constraints")
 
 # Research Question Types
+class Question(BaseModel):
+    """Structure for research questions."""
+    question: str
+    sub_questions: List[str]
+
 class ResearchQuestion(BaseModel):
-    """Research question with validation results."""
-    question: str = Field(..., description="The main research question")
-    sub_questions: List[str] = Field(default_factory=list, description="Related sub-questions")
-    scope: Dict[str, Any] = Field(default_factory=dict, description="Research scope parameters")
+    """Complete research question with validation."""
+    question: Question
+    validation: Dict[str, bool]
 
 class KeywordSet(BaseModel):
     """Keyword set for literature search."""
@@ -35,27 +38,33 @@ class KeywordSet(BaseModel):
     hit_counts: Dict[str, int] = Field(default_factory=dict, description="Number of hits per term/combination")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
 
+class PaperResult(BaseModel):
+    """Structure for paper search results."""
+    paper_id: str
+    title: str
+    abstract: str
+    metadata: Dict[str, Any]
+
 class ScreenedPaper(BaseModel):
-    """Paper with screening results."""
-    paper_id: str = Field(..., description="Unique identifier for the paper")
-    title: str = Field(..., description="Paper title")
-    authors: List[str] = Field(..., description="List of authors")
-    abstract: str = Field(..., description="Paper abstract")
-    relevance_score: float = Field(..., ge=0, le=1, description="Relevance score between 0 and 1")
-    inclusion_criteria: Dict[str, bool] = Field(default_factory=dict, description="Inclusion criteria results")
-    priority_rank: int = Field(..., ge=1, description="Priority ranking (1 being highest)")
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
+    """Structure for screened paper results."""
+    paper_id: str
+    title: str
+    abstract: str
+    metadata: Dict[str, Any]
+    relevance_score: float
+    inclusion_criteria: Dict[str, bool]
+    priority_rank: int
 
 # Input/Output Types for Agents
 class FormulateQuestionInput(BaseModel):
-    """Input for research question formulation."""
-    research_area: str = Field(..., description="The research area to investigate")
-    constraints: Dict[str, Any] = Field(default_factory=dict, description="Research constraints")
+    """Input for question formulation."""
+    research_area: str
+    constraints: Dict[str, Any]
 
 class FormulateQuestionOutput(BaseModel):
-    """Output from research question formulation."""
-    question: ResearchQuestion = Field(..., description="The formulated research question")
-    validation: Dict[str, bool] = Field(..., description="Validation results against FINER criteria")
+    """Output from question formulation."""
+    question: Question
+    validation: Dict[str, bool]
 
 class KeywordAnalysisInput(BaseModel):
     """Input for keyword analysis."""
@@ -63,8 +72,9 @@ class KeywordAnalysisInput(BaseModel):
 
 class KeywordAnalysisOutput(BaseModel):
     """Output from keyword analysis."""
-    keywords: KeywordSet = Field(..., description="The generated keyword set")
-    search_strategy: str = Field(..., description="Description of the search strategy")
+    keywords: List[str]
+    combinations: List[str]
+    constraints: Dict[str, Any]
 
 class AbstractScreeningInput(BaseModel):
     """Input for abstract screening."""
