@@ -1,6 +1,6 @@
 import asyncio
 from openai import OpenAI
-from deep_researcher.research_agents.workflow import SystematicReviewWorkflow
+from research_agents.workflow import SystematicReviewWorkflow
 
 async def main():
     # Create an instance of the workflow with OpenAI client

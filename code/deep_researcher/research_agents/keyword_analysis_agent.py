@@ -20,10 +20,24 @@ class KeywordSet(BaseModel):
 def generate_search_combinations(keywords: List[str], context: Dict[str, Any]) -> List[str]:
     """Generate boolean search combinations from keywords."""
     # Create a single, less restrictive search query
-    combinations = [
-        # Basic search: transformer AND NLP with date range
-        f"(transformer OR transformers) AND (nlp OR 'natural language processing') AND (year:[{context.get('min_year', 2020)} TO {context.get('max_year', 2024)}])"
-    ]
+    combinations = []
+    
+    # Extract constraints from context
+    min_year = context.get('min_year', 2020)
+    max_year = context.get('max_year', 2025)
+    year_constraint = f"year:[{min_year} TO {max_year}]"
+    
+    # If we have keywords, use them to create additional combinations
+    if keywords and len(keywords) >= 3:
+        # Group keywords in meaningful combinations
+        for i in range(0, len(keywords), 3):
+            if i + 2 < len(keywords):
+                term1, term2, term3 = keywords[i], keywords[i+1], keywords[i+2]
+                combinations.append(f"({term1} OR {term2}) AND {term3} ")
+            elif len(keywords) == 2:
+                combinations.append(f"({keywords[0]} OR {keywords[1]})")
+            else:    # If there are fewer than 3 keywords, use the last one as a combination
+                combinations.append(f"{keywords[-1]}")
     
     return combinations
 

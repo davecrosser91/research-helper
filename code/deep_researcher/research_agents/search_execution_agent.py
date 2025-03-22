@@ -130,9 +130,9 @@ async def search_execution(_, args_json: str) -> str:
     
     # Build the search query
     search_query = args.query
-    if args.categories:
-        category_query = ' OR '.join(f'cat:{cat}' for cat in args.categories)
-        search_query = f'({search_query}) AND ({category_query})'
+    # if args.categories:
+    #     category_query = ' OR '.join(f'cat:{cat}' for cat in args.categories)
+    #     search_query = f'({search_query}) AND ({category_query})'
     
     # Create arxiv client
     client = arxiv.Client()
