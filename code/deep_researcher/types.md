@@ -62,7 +62,7 @@ class ScreenedPaper:
     authors: List[str]            # List of authors
     abstract: str                 # Paper abstract
     relevance_score: float        # Relevance score between 0 and 1
-    inclusion_criteria: Dict[str, bool]  # Results for each inclusion criterion
+    inclusion_criteria: Optional[Dict[str, bool]]  # Results for each inclusion criterion
     priority_rank: int            # Priority ranking (1 being highest)
     metadata: Dict[str, Any]      # Additional metadata including rationale
 ```

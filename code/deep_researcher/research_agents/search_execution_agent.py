@@ -80,11 +80,11 @@ class BatchResult(BaseModel):
     has_more: bool
     search_metadata: Dict[str, Any]
 
-@retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=4, max=10),
-    reraise=True
-)
+# @retry(
+#     stop=stop_after_attempt(3),
+#     wait=wait_exponential(multiplier=1, min=4, max=10),
+#     reraise=True
+# )
 async def execute_search_batch(client: arxiv.Client, search: arxiv.Search, start: int, batch_size: int) -> List[PaperMetadata]:
     """Execute a single batch of the search with retry logic"""
     logger.info(f"Processing batch starting at {start} with size {batch_size}")

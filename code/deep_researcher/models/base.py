@@ -13,7 +13,7 @@ class ResearchQuestion:
 @dataclass
 class SearchStrategy:
     keywords: List[str]
-    combinations: List[str]
+    #combinations: List[str]
     constraints: Dict[str, Any]
     user_approved: bool = False
 

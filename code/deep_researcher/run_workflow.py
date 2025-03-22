@@ -11,12 +11,15 @@ async def run_workflow():
     workflow = SystematicReviewWorkflow(client)
     
     # Set research parameters
-    research_area = "transformer architectures in natural language processing"
+    research_area = "Line Item Detection in Invoices"
     constraints = {
         "publication_years": [2020, 2025],
-        "max_results":5,
-        "batch_size": 5,
-        "max_combinations": 5,
+        "max_results":500,
+        "batch_size": 100,
+        "max_combinations": 4,
+        "max_papers_per_combination": 10,
+        "max_iterations": 5,
+        "year_range": 3,
         "methodology_focus": ["experimental", "theoretical"]
     }
     
