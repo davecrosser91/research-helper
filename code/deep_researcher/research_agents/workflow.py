@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Dict, Any, Optional, List
 import logging
 import json
@@ -17,7 +18,7 @@ from research_agents.types import (
 from research_agents.research_question_agent import ResearchQuestionAgent
 from research_agents.keyword_analysis_agent import KeywordAnalysisAgent
 from research_agents.search_execution_agent import search_execution_tool
-from research_agents.abstract_screening_agent import abstract_screening_tool, RelevanceScore
+from research_agents.abstract_screening_agent import AbstractScreeningAgent, RelevanceScore
 
 class WorkflowResult(BaseModel):
     """Complete results from the systematic review workflow."""
@@ -45,7 +46,7 @@ class SystematicReviewWorkflow:
         # Initialize agents
         self.research_question_agent = ResearchQuestionAgent(client=openai_client)
         self.keyword_analysis_agent = KeywordAnalysisAgent(client=openai_client)
-        
+        self.abstract_agent = AbstractScreeningAgent(client=openai_client)
     async def start_review(
         self,
         research_area: str,
@@ -85,38 +86,16 @@ class SystematicReviewWorkflow:
             # Step 3: Search for papers using search_execution_tool
             print("\n📚 Step 3: Searching ArXiv...")
             papers = []
-            # for keyword in result.search_strategy.keywords:
-            #     search_args = {
-            #         "query": keyword,
-            #         "max_results":  20,
-            #         "batch_size": 10
-            #     }
-            #     if "publication_years" in constraints:
-            #         start_year, end_year = constraints["publication_years"]
-            #         search_args["min_date"] = f"{start_year}-01-01"
-            #         search_args["max_date"] = f"{end_year}-12-31"
-            #         print(f"Search arguments: {search_args}")
-            #     print(f"Search arguments: {search_args}")
-            #     # Execute search
-            #     search_results = await search_execution_tool.on_invoke_tool(None, json.dumps(search_args))
-                
-            #     batches = json.loads(search_results)
-            #     for batch in batches:
-            #         papers.extend(batch["papers"])
 
-            for combo in result.search_strategy.combinations[:5]:
+            for combo in result.search_strategy.combinations[:constraints.get("max_combinations", 5)]:
                 
                 print(f"Combo: {combo}")
                 search_args = {
                     "query": combo,
-                    "max_results":  50,
-                    "batch_size": 10
-                    
+                    "max_results":  constraints.get("max_results", 50),
+                    "batch_size":  constraints.get("batch_size", 50)       
                 }
-                # if "publication_years" in constraints:
-                #     start_year, end_year = constraints["publication_years"]
-                #     search_args["min_date"] = f"{start_year}-01-01"
-                #     search_args["max_date"] = f"{end_year}-12-31"
+
                 print(f"Search arguments: {search_args}")
                 # Execute search
                 search_results = await search_execution_tool.on_invoke_tool(None, json.dumps(search_args))
@@ -124,7 +103,6 @@ class SystematicReviewWorkflow:
                 for batch in batches:
                     papers.extend(batch["papers"])
 
-            
             result.papers = papers
             result.search_stats = self._calculate_search_stats(papers, result.search_strategy)
             self._print_search_stats(result.search_stats)
@@ -139,14 +117,34 @@ class SystematicReviewWorkflow:
                 screening_args = {
                     "papers": papers,
                     "criteria": {
-                        "required_keywords": result.search_strategy.keywords,
-                        "methodology_types": ["experimental", "theoretical", "review"],
-                        "min_relevance_score": RelevanceScore.HIGH.value
+                        "criteria1": "it should be a paper that is related to the research question",
+                        "criteria2": "it should be actively published in the last 5 years",
+                        "criteria3": "it should be a peer-reviewed paper",
                     }
                 }
                 
                 # Execute screening
-                screening_results = await abstract_screening_tool.on_invoke_tool(None, json.dumps(screening_args))
+                # Initialize the abstract screening agent
+                
+                # Screen papers using the agent
+                screened_papers = await self.abstract_agent.screen_papers(
+                    papers=papers,
+                    criteria=screening_args["criteria"],
+                    context={"research_question": result.research_question.question.question}
+                )
+                
+                # Format the results
+                screening_results = json.dumps([{
+                    "batch_id": "batch-1",
+                    "papers": [paper.model_dump() for paper in screened_papers],
+                    "batch_statistics": {
+                        "total_papers": len(screened_papers),
+                        "high_relevance": sum(1 for p in screened_papers if p.relevance_score > 0.7),
+                        "medium_relevance": sum(1 for p in screened_papers if 0.4 <= p.relevance_score <= 0.7),
+                        "low_relevance": sum(1 for p in screened_papers if p.relevance_score < 0.4)
+                    },
+                    "timestamp": datetime.now().isoformat()
+                }])
                 result.screened_papers = json.loads(screening_results)
             
             self.state = WorkflowState.COMPLETED
@@ -167,10 +165,13 @@ class SystematicReviewWorkflow:
         }
         
         # Count keyword hits
+        print(f"Papers: {papers[0]['abstract']}")
+
         for keyword in strategy.keywords:
-            hits = sum(1 for paper in papers if 
+            print(f"Keyword: {keyword}")
+            hits = sum([1 for paper in papers if 
                       keyword.lower() in paper["title"].lower() or 
-                      keyword.lower() in paper["abstract"].lower())
+                      keyword.lower() in paper["abstract"].lower()])
             stats["keyword_hits"][keyword] = hits
             
         # Count years and categories

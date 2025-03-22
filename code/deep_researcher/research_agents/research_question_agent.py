@@ -117,21 +117,3 @@ class ResearchQuestionAgent:
             raise  # Re-raise TimeoutError without wrapping
         except Exception as e:
             raise RuntimeError(f"Failed to formulate question: {str(e)}") from e
-
-# # Example usage:
-
-# async def main():
-#     result = await formulate_question(
-#         research_area="quantum computing applications in cryptography",
-#         constraints={
-#             "time_frame": "2020-2024",
-#             "focus_areas": ["post-quantum cryptography", "quantum key distribution"],
-#             "scope": "theoretical and experimental studies"
-#         }
-#     )
-#     print(f"Research Question: {result.question.question}")
-#     print(f"Sub-questions: {result.question.sub_questions}")
-#     print(f"Validation: {result.validation}")
-
-# if __name__ == "__main__":
-#     asyncio.run(main())
