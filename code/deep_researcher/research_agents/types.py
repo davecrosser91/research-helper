@@ -14,6 +14,15 @@ class WorkflowState(Enum):
     COMPLETED = "completed"
     ERROR = "error"
 
+class WorkflowResult(BaseModel):
+    """Complete results from the systematic review workflow."""
+    research_question: 'FormulateQuestionOutput' = Field(..., description="Results from research question formulation")
+    search_strategy: 'SearchStrategy' = Field(..., description="Results from keyword analysis")
+    papers: List[Dict[str, Any]] = Field(default_factory=list, description="Papers found during search")
+    screened_papers: Optional[List[Dict[str, Any]]] = Field(None, description="Results from abstract screening")
+    search_stats: Dict[str, Any] = Field(default_factory=dict, description="Statistics about the search results")
+    refinement_results: Optional[Dict[str, Any]] = Field(None, description="Results from keyword refinement")
+
 class SearchStrategy(BaseModel):
     """Search strategy with keywords and constraints."""
     keywords: List[str] = Field(..., description="List of search keywords")

@@ -6,30 +6,18 @@ from openai import OpenAI
 from pydantic import BaseModel, Field
 from tabulate import tabulate
 
-from research_agents.types import (
-    KeywordAnalysisOutput,
+from .research_question_agent import ResearchQuestionAgent
+from .keyword_analysis_agent import KeywordAnalysisAgent
+from .abstract_screening_agent import AbstractScreeningAgent
+from .search_execution_agent import search_execution_tool
+from .keyword_refinement import KeywordRefinement, RefinementConfig
+from .types import (
     WorkflowState,
-    FormulateQuestionInput,
+    WorkflowResult,
     FormulateQuestionOutput,
-    SearchStrategy,
-    ScreenedPaper,
-    ResearchQuestion
+    SearchStrategy
 )
-from research_agents.research_question_agent import ResearchQuestionAgent
-from research_agents.keyword_analysis_agent import KeywordAnalysisAgent
-from research_agents.search_execution_agent import search_execution_tool
-from research_agents.abstract_screening_agent import AbstractScreeningAgent, RelevanceScore
-from research_agents.keyword_refinement import KeywordRefinement, RefinementConfig
-from ..firebase_helper import init_firebase, push_to_firebase
-
-class WorkflowResult(BaseModel):
-    """Complete results from the systematic review workflow."""
-    research_question: FormulateQuestionOutput = Field(..., description="Results from research question formulation")
-    search_strategy: SearchStrategy = Field(..., description="Results from keyword analysis")
-    papers: List[Dict[str, Any]] = Field(default_factory=list, description="Papers found during search")
-    screened_papers: Optional[List[Dict[str, Any]]] = Field(None, description="Results from abstract screening")
-    search_stats: Dict[str, Any] = Field(default_factory=dict, description="Statistics about the search results")
-    refinement_results: Optional[Dict[str, Any]] = Field(None, description="Results from keyword refinement")
+from .firebase_helper import init_firebase, push_to_firebase
 
 class SystematicReviewWorkflow:
     """Manages the systematic review workflow.
