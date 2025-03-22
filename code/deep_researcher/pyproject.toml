@@ -1,21 +1,22 @@
 [project]
-name = "research-buddy"
+name = "deep_researcher"
 version = "0.1.0"
-description = "A research assistant using multiple agents"
-requires-python = ">=3.9"
-dependencies = [
-    "openai-agents>=0.0.6",
-    "python-dotenv>=1.0.1",
-    "rich>=13.9.4",
+description = "A systematic literature review tool using AI agents"
+authors = [
+    {name = "David Kreuzer", email = "david.kreuzer@example.com"},
 ]
+dependencies = [
+    "arxiv>=2.1.3",
+    "tenacity>=9.0.0",
+    "python-dotenv>=1.0.0",
+]
+requires-python = ">=3.9"
 
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
 
-[tool.hatch.build.targets.wheel]
-packages = ["."]
-
-[tool.rye]
-managed = true
-dev-dependencies = [] 
+[tool.pdm.dev-dependencies]
+test = [
+    "pytest>=7.4.0",
+] 
