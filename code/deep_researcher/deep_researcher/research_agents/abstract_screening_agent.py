@@ -6,10 +6,17 @@ import logging
 from enum import Enum
 from dataclasses import dataclass
 from agents import FunctionTool, Agent
+import asyncio
+from openai import OpenAI
+from dotenv import load_dotenv
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+load_dotenv()
+
+from .types import ScreenedPaper
 
 INSTRUCTIONS = """
 You are an Abstract Screening specialist focused on evaluating research papers.
@@ -60,18 +67,11 @@ class ThemeIdentification(BaseModel):
     confidence: float
 
 class ScreeningResult(BaseModel):
-    """Result of paper screening"""
-    paper_id: str
-    title: str
-    relevance_score: RelevanceScore
-    methodology_type: MethodologyType
-    inclusion_reasons: List[str]
-    exclusion_reasons: List[str]
-    identified_themes: List[ThemeIdentification]
-    priority_rank: int
-    detailed_review_flag: bool
-    screening_notes: str
-    confidence_score: float
+    """Structure for paper screening results."""
+    relevance_score: float = Field(..., ge=0, le=1, description="Relevance score between 0 and 1")
+    inclusion_criteria: Dict[str, bool] = Field(description="Results for each inclusion criterion")
+    priority_rank: int = Field(..., ge=1, description="Priority ranking (1 being highest)")
+    rationale: str = Field(description="Explanation for the screening decision")
 
 class ScreeningBatch(BaseModel):
     """Batch of screening results"""
@@ -216,17 +216,10 @@ async def screen_abstracts(_, args_json: str) -> str:
             methodology = evaluate_methodology(paper['abstract'])
             
             result = ScreeningResult(
-                paper_id=paper['arxiv_id'],
-                title=paper['title'],
-                relevance_score=relevance_score,
-                methodology_type=methodology,
-                inclusion_reasons=[],  # Would be populated based on specific criteria matches
-                exclusion_reasons=[],  # Would be populated based on specific criteria failures
-                identified_themes=[],  # Will be updated with batch themes
-                priority_rank=0,  # Will be updated after batch processing
-                detailed_review_flag=relevance_score in [RelevanceScore.HIGH, RelevanceScore.MEDIUM],
-                screening_notes="",  # Would contain detailed screening notes
-                confidence_score=0.8  # Would be calculated based on criteria matches
+                relevance_score=relevance_score.value,
+                inclusion_criteria={},
+                priority_rank=0,
+                rationale=""
             )
             screening_results.append(result)
         
@@ -234,11 +227,9 @@ async def screen_abstracts(_, args_json: str) -> str:
         batch_themes = identify_themes(batch_papers)
         
         # Update results with themes and priority ranking
-        screening_results.sort(key=lambda x: x.relevance_score.value, reverse=True)
+        screening_results.sort(key=lambda x: x.relevance_score, reverse=True)
         for rank, result in enumerate(screening_results, 1):
             result.priority_rank = rank
-            result.identified_themes = [theme for theme in batch_themes 
-                                     if result.paper_id in theme.papers]
         
         # Create batch result
         batch = ScreeningBatch(
@@ -248,13 +239,13 @@ async def screen_abstracts(_, args_json: str) -> str:
             batch_statistics={
                 "total_papers": len(screening_results),
                 "high_relevance": sum(1 for r in screening_results 
-                                    if r.relevance_score == RelevanceScore.HIGH),
+                                    if r.relevance_score == RelevanceScore.HIGH.value),
                 "medium_relevance": sum(1 for r in screening_results 
-                                      if r.relevance_score == RelevanceScore.MEDIUM),
+                                      if r.relevance_score == RelevanceScore.MEDIUM.value),
                 "low_relevance": sum(1 for r in screening_results 
-                                   if r.relevance_score == RelevanceScore.LOW),
+                                   if r.relevance_score == RelevanceScore.LOW.value),
                 "irrelevant": sum(1 for r in screening_results 
-                                if r.relevance_score == RelevanceScore.IRRELEVANT),
+                                if r.relevance_score == RelevanceScore.IRRELEVANT.value),
             },
             timestamp=datetime.now()
         )
@@ -318,6 +309,101 @@ abstract_screening_tool = FunctionTool(
     },
     on_invoke_tool=screen_abstracts
 )
+
+class AbstractScreeningAgent:
+    """Agent for screening paper abstracts based on research criteria."""
+    
+    def __init__(self, client: OpenAI = None, timeout: int = 120):
+        self.client = client or OpenAI()
+        self.timeout = timeout
+        
+    async def screen_paper(self, paper: Dict[str, Any], criteria: Dict[str, Any], context: Dict[str, Any] = None) -> ScreenedPaper:
+        """Screen a single paper based on its abstract and metadata."""
+        try:
+            # Create the system message with instructions
+            system_message = """You are an expert at screening research papers for systematic reviews. Your role is to:
+            1. Analyze paper abstracts against inclusion criteria
+            2. Assess relevance to the research question
+            3. Evaluate methodological quality
+            4. Assign priority rankings
+            5. Provide clear rationale for decisions
+            
+            You must output your response in the following JSON format:
+            {
+                "relevance_score": float between 0 and 1,
+                "inclusion_criteria": {
+                    "criterion1": boolean,
+                    "criterion2": boolean,
+                    ...
+                },
+                "priority_rank": integer (1 being highest),
+                "rationale": "explanation string"
+            }"""
+            
+            # Create the user message with the paper and criteria
+            user_message = f"""Please screen this paper against the given criteria:
+            
+            Title: {paper.get('title', 'N/A')}
+            Authors: {', '.join(paper.get('authors', ['N/A']))}
+            Abstract: {paper.get('abstract', 'N/A')}
+            
+            Research Context: {json.dumps(context) if context else '{}'}
+            Screening Criteria: {json.dumps(criteria)}
+            
+            Provide a detailed assessment of the paper's relevance and quality."""
+            
+            # Call the OpenAI API with a timeout
+            try:
+                response = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        self.client.chat.completions.create,
+                        model="gpt-4-turbo-preview",
+                        response_format={"type": "json_object"},
+                        messages=[
+                            {"role": "system", "content": system_message},
+                            {"role": "user", "content": user_message}
+                        ]
+                    ),
+                    timeout=self.timeout
+                )
+            except asyncio.TimeoutError:
+                raise TimeoutError("Assistant took too long to respond")
+            
+            # Parse the response
+            try:
+                response_data = json.loads(response.choices[0].message.content)
+                screening_result = ScreeningResult(**response_data)
+                
+                # Convert to ScreenedPaper format
+                return ScreenedPaper(
+                    paper_id=paper.get('paper_id', ''),
+                    title=paper.get('title', ''),
+                    authors=paper.get('authors', []),
+                    abstract=paper.get('abstract', ''),
+                    relevance_score=screening_result.relevance_score,
+                    inclusion_criteria=screening_result.inclusion_criteria,
+                    priority_rank=screening_result.priority_rank,
+                    metadata={
+                        "rationale": screening_result.rationale,
+                        **paper.get('metadata', {})
+                    }
+                )
+                
+            except (json.JSONDecodeError, KeyError) as e:
+                raise ValueError(f"Invalid response format: {str(e)}")
+            
+        except TimeoutError:
+            raise  # Re-raise TimeoutError without wrapping
+        except Exception as e:
+            raise RuntimeError(f"Failed to screen paper: {str(e)}") from e
+            
+    async def screen_papers(self, papers: List[Dict[str, Any]], criteria: Dict[str, Any], context: Dict[str, Any] = None) -> List[ScreenedPaper]:
+        """Screen multiple papers in parallel."""
+        tasks = [
+            self.screen_paper(paper, criteria, context)
+            for paper in papers
+        ]
+        return await asyncio.gather(*tasks)
 
 # Create the abstract screening agent
 abstract_screening_agent = Agent(
