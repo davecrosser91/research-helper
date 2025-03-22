@@ -4,7 +4,7 @@ import asyncio
 import logging
 import uuid
 
-from .types import (
+from ..deep_researcher.research_agents.types import (
     Message, WorkflowState, WorkflowContext,
     AgentResult, AgentError, MessageType
 )

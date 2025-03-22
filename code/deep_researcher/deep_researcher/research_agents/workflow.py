@@ -86,29 +86,46 @@ class SystematicReviewWorkflow:
             
             # Step 3: Search for papers using search_execution_tool
             print("\n📚 Step 3: Searching ArXiv...")
-            self.state = WorkflowState.PAPER_SEARCH
-            
-            # Prepare search arguments
-            search_args = {
-                "query": " AND ".join(f"({combo})" for combo in result.search_strategy.combinations),
-                "max_results": constraints.get("max_results", 100),
-                "batch_size": 50
-            }
-            
-            # Add date constraints if present
-            if "publication_years" in constraints:
-                start_year, end_year = constraints["publication_years"]
-                search_args["min_date"] = f"{start_year}-01-01"
-                search_args["max_date"] = f"{end_year}-12-31"
-            
-            # Execute search
-            search_results = await search_execution_tool.on_invoke_tool(None, json.dumps(search_args))
-            batches = json.loads(search_results)
-            
-            # Collect papers from all batches
             papers = []
-            for batch in batches:
-                papers.extend(batch["papers"])
+            # for keyword in result.search_strategy.keywords:
+            #     search_args = {
+            #         "query": keyword,
+            #         "max_results":  20,
+            #         "batch_size": 10
+            #     }
+            #     if "publication_years" in constraints:
+            #         start_year, end_year = constraints["publication_years"]
+            #         search_args["min_date"] = f"{start_year}-01-01"
+            #         search_args["max_date"] = f"{end_year}-12-31"
+            #         print(f"Search arguments: {search_args}")
+            #     print(f"Search arguments: {search_args}")
+            #     # Execute search
+            #     search_results = await search_execution_tool.on_invoke_tool(None, json.dumps(search_args))
+                
+            #     batches = json.loads(search_results)
+            #     for batch in batches:
+            #         papers.extend(batch["papers"])
+
+            for combo in result.search_strategy.combinations[:5]:
+                
+                print(f"Combo: {combo}")
+                search_args = {
+                    "query": combo,
+                    "max_results":  50,
+                    "batch_size": 10
+                    
+                }
+                if "publication_years" in constraints:
+                    start_year, end_year = constraints["publication_years"]
+                    search_args["min_date"] = f"{start_year}-01-01"
+                    search_args["max_date"] = f"{end_year}-12-31"
+                    print(f"Search arguments: {search_args}")
+                # Execute search
+                search_results = await search_execution_tool.on_invoke_tool(None, json.dumps(search_args))
+                batches = json.loads(search_results)
+                for batch in batches:
+                    papers.extend(batch["papers"])
+
             
             result.papers = papers
             result.search_stats = self._calculate_search_stats(papers, result.search_strategy)
@@ -126,7 +143,7 @@ class SystematicReviewWorkflow:
                     "criteria": {
                         "required_keywords": result.search_strategy.keywords,
                         "methodology_types": ["experimental", "theoretical", "review"],
-                        "min_relevance_score": RelevanceScore.LOW.value
+                        "min_relevance_score": RelevanceScore.HIGH.value
                     }
                 }
                 
