@@ -14,6 +14,12 @@ class WorkflowState(Enum):
     COMPLETED = auto()
     ERROR = auto()
 
+class SearchStrategy(BaseModel):
+    """Search strategy with keywords and constraints."""
+    keywords: List[str] = Field(..., description="List of search keywords")
+    combinations: List[str] = Field(..., description="Boolean combinations of keywords")
+    constraints: Dict[str, Any] = Field(default_factory=dict, description="Search constraints")
+
 # Research Question Types
 class ResearchQuestion(BaseModel):
     """Research question with validation results."""

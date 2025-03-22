@@ -1,31 +1,27 @@
 from typing import Dict, Any, Optional
-from agents import Agent, Runner
 import asyncio
 import logging
 from datetime import datetime
+from openai import OpenAI
 
-from .types import WorkflowState
-from .research_question_agent import create_research_question_agent
-from .keyword_analysis_agent import create_keyword_analysis_agent  # To be implemented
-from .abstract_screening_agent import create_abstract_screening_agent  # To be implemented
+from .types import WorkflowState, FormulateQuestionInput, KeywordAnalysisInput
+from .research_question_agent import ResearchQuestionAgent
+from .keyword_analysis_agent import KeywordAnalysisAgent
 
 class SystematicReviewWorkflow:
-    """Manages the systematic review workflow using OpenAI Agents SDK."""
+    """Manages the systematic review workflow."""
     
-    def __init__(self):
+    def __init__(self, openai_client: OpenAI = None):
         self.logger = logging.getLogger("systematic_review")
         self.state = WorkflowState.INITIALIZING
         self.metadata: Dict[str, Any] = {}
         
-        # Initialize agents
-        self.research_question_agent = create_research_question_agent()
-        # self.keyword_analysis_agent = create_keyword_analysis_agent()
-        # self.abstract_screening_agent = create_abstract_screening_agent()
+        # Initialize OpenAI client
+        self.client = openai_client or OpenAI()
         
-        # Set up handoffs between agents
-        self.research_question_agent.handoffs = [
-            # self.keyword_analysis_agent
-        ]
+        # Initialize agents
+        self.research_question_agent = ResearchQuestionAgent(client=self.client)
+        self.keyword_analysis_agent = KeywordAnalysisAgent(client=self.client)
         
     async def start_review(
         self,
@@ -33,51 +29,51 @@ class SystematicReviewWorkflow:
         constraints: Dict[str, Any]
     ):
         """Start a new systematic review."""
-        self.logger.info(f"Starting systematic review for: {research_area}")
-        self.state = WorkflowState.QUESTION_FORMULATION
-        
-        # Step 1: Formulate research question
-        question_result = await Runner.run(
-            self.research_question_agent,
-            {
-                "research_area": research_area,
-                "constraints": constraints
-            },
-            context={
-                "state": self.state,
-                "metadata": self.metadata
+        try:
+            self.logger.info(f"Starting systematic review for: {research_area}")
+            
+            # Step 1: Formulate research question
+            self.state = WorkflowState.QUESTION_FORMULATION
+            question_input = FormulateQuestionInput(
+                research_area=research_area,
+                constraints=constraints
+            )
+            question_result = await self.research_question_agent.formulate_question(question_input)
+            self.logger.info("Research question formulated")
+            
+            # Step 2: Keyword analysis
+            self.state = WorkflowState.KEYWORD_ANALYSIS
+            keyword_result = await self.keyword_analysis_agent.analyze(
+                question_result.question.question,
+                context={
+                    "field": research_area,
+                    "sub_questions": question_result.question.sub_questions,
+                    "constraints": constraints
+                }
+            )
+            self.logger.info("Keyword analysis completed")
+            
+            # Return combined results
+            return {
+                "research_question": question_result,
+                "search_strategy": keyword_result
             }
-        )
-        
-        self.logger.info("Research question formulated")
-        self.state = WorkflowState.KEYWORD_ANALYSIS
-        
-        # Step 2: Keyword analysis (to be implemented)
-        # keyword_result = await Runner.run(
-        #     self.keyword_analysis_agent,
-        #     question_result.final_output,
-        #     context={"state": self.state}
-        # )
-        
-        # Step 3: Abstract screening (to be implemented)
-        # screening_result = await Runner.run(
-        #     self.abstract_screening_agent,
-        #     keyword_result.final_output,
-        #     context={"state": self.state}
-        # )
-        
-        return question_result.final_output
+            
+        except Exception as e:
+            self.state = WorkflowState.ERROR
+            self.logger.error(f"Workflow error: {str(e)}")
+            raise
 
 # Example usage:
 """
 async def main():
     workflow = SystematicReviewWorkflow()
     result = await workflow.start_review(
-        research_area="quantum computing applications in cryptography",
+        research_area="transformer architectures in natural language processing",
         constraints={
-            "time_frame": "2020-2024",
-            "focus_areas": ["post-quantum cryptography", "quantum key distribution"],
-            "scope": "theoretical and experimental studies"
+            "time_frame": "current",
+            "focus_areas": ["architecture design", "performance optimization", "applications"],
+            "scope": "theoretical and empirical studies"
         }
     )
     print(result)
