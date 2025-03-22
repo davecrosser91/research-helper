@@ -19,6 +19,7 @@ from research_agents.research_question_agent import ResearchQuestionAgent
 from research_agents.keyword_analysis_agent import KeywordAnalysisAgent
 from research_agents.search_execution_agent import search_execution_tool
 from research_agents.abstract_screening_agent import AbstractScreeningAgent, RelevanceScore
+from research_agents.keyword_refinement import KeywordRefinement, RefinementConfig
 
 class WorkflowResult(BaseModel):
     """Complete results from the systematic review workflow."""
@@ -27,15 +28,17 @@ class WorkflowResult(BaseModel):
     papers: List[Dict[str, Any]] = Field(default_factory=list, description="Papers found during search")
     screened_papers: Optional[List[Dict[str, Any]]] = Field(None, description="Results from abstract screening")
     search_stats: Dict[str, Any] = Field(default_factory=dict, description="Statistics about the search results")
+    refinement_results: Optional[Dict[str, Any]] = Field(None, description="Results from keyword refinement")
 
 class SystematicReviewWorkflow:
     """Manages the systematic review workflow.
     
-    The workflow consists of four main steps:
+    The workflow consists of five main steps:
     1. Research Question Formulation: Formulates clear research questions using FINER criteria
     2. Keyword Analysis: Generates comprehensive search strategy from research questions
-    3. Paper Search: Uses ArXiv to find relevant papers based on the search strategy
-    4. Abstract Screening: Evaluates papers against inclusion criteria
+    3. Keyword Refinement: Optimizes keyword combinations for better search results
+    4. Paper Search: Uses ArXiv to find relevant papers based on the refined strategy
+    5. Abstract Screening: Evaluates papers against inclusion criteria
     """
     
     def __init__(self, openai_client: OpenAI):
@@ -47,6 +50,7 @@ class SystematicReviewWorkflow:
         self.research_question_agent = ResearchQuestionAgent(client=openai_client)
         self.keyword_analysis_agent = KeywordAnalysisAgent(client=openai_client)
         self.abstract_agent = AbstractScreeningAgent(client=openai_client)
+
     async def start_review(
         self,
         research_area: str,
@@ -57,7 +61,11 @@ class SystematicReviewWorkflow:
             self.logger.info(f"Starting systematic review for: {research_area}")
             result = WorkflowResult(
                 research_question=FormulateQuestionOutput(question={"question": "", "sub_questions": []}, validation={}),
-                search_strategy=SearchStrategy(keywords=[], combinations=[], constraints={})
+                search_strategy=SearchStrategy(
+                    keywords=[],
+                    constraints={},
+                    metadata={}
+                )
             )
             
             # Step 1: Formulate research question
@@ -83,39 +91,66 @@ class SystematicReviewWorkflow:
             )
             self.logger.info("Keyword analysis completed")
             
-            # Step 3: Search for papers using search_execution_tool
-            print("\n📚 Step 3: Searching ArXiv...")
-            papers = []
+            # Step 3: Keyword refinement
+            print("\n🎯 Step 3: Refining Keywords...")
+            self.state = WorkflowState.KEYWORD_REFINEMENT
+            refinement_config = RefinementConfig(
+                keywords=result.search_strategy.keywords,
+                papers_per_keyword=constraints.get("max_results", 50),
+                year_range=constraints.get("year_range", 3)
+            )
 
-            for combo in result.search_strategy.combinations[:constraints.get("max_combinations", 5)]:
-                
-                print(f"Combo: {combo}")
-                search_args = {
-                    "query": combo,
-                    "max_results":  constraints.get("max_results", 50),
-                    "batch_size":  constraints.get("batch_size", 50)       
-                }
-
-                print(f"Search arguments: {search_args}")
-                # Execute search
-                search_results = await search_execution_tool.on_invoke_tool(None, json.dumps(search_args))
-                batches = json.loads(search_results)
-                for batch in batches:
-                    papers.extend(batch["papers"])
-
-            result.papers = papers
-            result.search_stats = self._calculate_search_stats(papers, result.search_strategy)
-            self._print_search_stats(result.search_stats)
-            self.logger.info(f"Found {len(papers)} papers")
             
-            # Step 4: Screen papers using abstract_screening_tool
-            if papers:
-                print("\n🔎 Step 4: Screening Papers...")
+            keyword_refinement = KeywordRefinement(refinement_config)
+            result.search_strategy = await keyword_refinement.enhance_search_strategy(result.search_strategy)
+            result.refinement_results = result.search_strategy.metadata.get("refinement_results")
+            print(f"Refinement results: {result.refinement_results}")
+            self.logger.info(f"Keyword refinement completed with {len(result.search_strategy.keywords)} keywords")
+            
+            # Step 4: Search for papers using scored keywords
+            print("\n📚 Step 4: Searching ArXiv with Scored Keywords...")
+            self.state = WorkflowState.PAPER_SEARCH
+            papers = []
+            
+            for keyword in result.search_strategy.keywords[:3]:
+                print(f"Searching keyword: {keyword}")
+                search_args = {
+                    "query": keyword,
+                    "max_results": constraints.get("max_results", 50),
+                    "batch_size": constraints.get("batch_size", 50)
+                }
+                
+                try:
+                    # Execute search
+                    search_results = await search_execution_tool.on_invoke_tool(None, json.dumps(search_args))
+                    batches = json.loads(search_results)
+                    for batch in batches:
+                        papers.extend(batch["papers"])
+                except Exception as e:
+                    self.logger.error(f"Search failed for keyword: {keyword}. Error: {str(e)}")
+                    continue  # Continue with next keyword if one fails
+                    
+            # Deduplicate papers based on arxiv_id
+            seen_papers = set()
+            unique_papers = []
+            for paper in papers:
+                if paper["arxiv_id"] not in seen_papers:
+                    seen_papers.add(paper["arxiv_id"])
+                    unique_papers.append(paper)
+                    
+            result.papers = unique_papers
+            result.search_stats = self._calculate_search_stats(unique_papers, result.search_strategy)
+            self._print_search_stats(result.search_stats)
+            self.logger.info(f"Found {len(unique_papers)} unique papers")
+            
+            # Step 5: Screen papers using abstract_screening_tool
+            if unique_papers:
+                print("\n🔎 Step 5: Screening Papers...")
                 self.state = WorkflowState.ABSTRACT_SCREENING
                 
                 # Prepare screening criteria
                 screening_args = {
-                    "papers": papers,
+                    "papers": unique_papers,
                     "criteria": {
                         "criteria1": "it should be a paper that is related to the research question",
                         "criteria2": "it should be actively published in the last 5 years",
@@ -123,12 +158,9 @@ class SystematicReviewWorkflow:
                     }
                 }
                 
-                # Execute screening
-                # Initialize the abstract screening agent
-                
                 # Screen papers using the agent
                 screened_papers = await self.abstract_agent.screen_papers(
-                    papers=papers,
+                    papers=unique_papers,
                     criteria=screening_args["criteria"],
                     context={"research_question": result.research_question.question.question}
                 )

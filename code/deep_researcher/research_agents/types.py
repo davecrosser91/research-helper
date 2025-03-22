@@ -8,6 +8,7 @@ class WorkflowState(Enum):
     INITIALIZING = "initializing"
     QUESTION_FORMULATION = "question_formulation"
     KEYWORD_ANALYSIS = "keyword_analysis"
+    KEYWORD_REFINEMENT = "keyword_refinement"
     PAPER_SEARCH = "paper_search"
     ABSTRACT_SCREENING = "abstract_screening"
     COMPLETED = "completed"
@@ -16,8 +17,9 @@ class WorkflowState(Enum):
 class SearchStrategy(BaseModel):
     """Search strategy with keywords and constraints."""
     keywords: List[str] = Field(..., description="List of search keywords")
-    combinations: List[str] = Field(..., description="Boolean combinations of keywords")
+    #combinations: List[str] = Field(..., description="Boolean combinations of keywords")
     constraints: Dict[str, Any] = Field(default_factory=dict, description="Search constraints")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata about the search strategy")
 
 # Research Question Types
 class Question(BaseModel):
@@ -34,7 +36,7 @@ class KeywordSet(BaseModel):
     """Keyword set for literature search."""
     primary_terms: List[str] = Field(..., description="Primary search terms")
     secondary_terms: List[str] = Field(default_factory=list, description="Secondary search terms")
-    combinations: List[str] = Field(default_factory=list, description="Boolean combinations of terms")
+    #combinations: List[str] = Field(default_factory=list, description="Boolean combinations of terms")
     hit_counts: Dict[str, int] = Field(default_factory=dict, description="Number of hits per term/combination")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
 
@@ -73,7 +75,7 @@ class KeywordAnalysisInput(BaseModel):
 class KeywordAnalysisOutput(BaseModel):
     """Output from keyword analysis."""
     keywords: List[str]
-    combinations: List[str]
+    #combinations: List[str]
     constraints: Dict[str, Any]
 
 class AbstractScreeningInput(BaseModel):

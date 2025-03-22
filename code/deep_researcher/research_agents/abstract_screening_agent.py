@@ -126,7 +126,7 @@ class AbstractScreeningAgent:
                 "inclusion_criteria": {
                     "criterion1": boolean,
                     "criterion2": boolean,
-                    ...
+                    "criterion3": boolean,
                 },
                 "priority_rank": integer (1 being highest),
                 "rationale": "explanation string"
