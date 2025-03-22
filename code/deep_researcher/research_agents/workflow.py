@@ -15,7 +15,9 @@ from .types import (
     WorkflowState,
     WorkflowResult,
     FormulateQuestionOutput,
-    SearchStrategy
+    FormulateQuestionInput,
+    SearchStrategy,
+    Question
 )
 from .firebase_helper import init_firebase, push_to_firebase
 
@@ -53,7 +55,21 @@ class SystematicReviewWorkflow:
     ) -> WorkflowResult:
         """Start a new systematic review."""
         try:
-            result = WorkflowResult()
+            # Initialize WorkflowResult with required default values
+            result = WorkflowResult(
+                research_question=FormulateQuestionOutput(
+                    question=Question(
+                        question="",
+                        sub_questions=[]
+                    ),
+                    validation={}
+                ),
+                search_strategy=SearchStrategy(
+                    keywords=[],
+                    constraints={},
+                    metadata={}
+                )
+            )
             
             # Store workflow initialization
             push_to_firebase(
@@ -71,7 +87,13 @@ class SystematicReviewWorkflow:
             # Step 1: Research Question Formulation
             print("\n🤔 Step 1: Formulating Research Questions...")
             self.state = WorkflowState.QUESTION_FORMULATION
-            result.research_question = await self.research_question_agent.formulate_question(research_area)
+            
+            # Create proper input for research question formulation
+            question_input = FormulateQuestionInput(
+                research_area=research_area,
+                constraints=constraints
+            )
+            result.research_question = await self.research_question_agent.formulate_question(question_input)
             
             # Store research question results
             push_to_firebase(
@@ -175,7 +197,39 @@ class SystematicReviewWorkflow:
                 print("\n📖 Step 5: Screening Abstracts...")
                 self.state = WorkflowState.ABSTRACT_SCREENING
                 
-                screened_papers = await self.abstract_agent.screen_papers(result.papers)
+                # Calculate keyword-based relevance scores
+                for paper in result.papers:
+                    # Count keyword occurrences in abstract
+                    abstract = paper.get('abstract', '').lower()
+                    keyword_counts = {}
+                    total_hits = 0
+                    
+                    for keyword in result.search_strategy.keywords:
+                        count = abstract.count(keyword.lower())
+                        keyword_counts[keyword] = count
+                        total_hits += count
+                    
+                    # Add keyword statistics to paper metadata
+                    paper['metadata'] = paper.get('metadata', {})
+                    paper['metadata']['keyword_counts'] = keyword_counts
+                    paper['metadata']['total_hits'] = total_hits
+                
+                # Create screening criteria from search strategy and constraints
+                screening_criteria = {
+                    "required_keywords": result.search_strategy.keywords,
+                    "min_keyword_hits": constraints.get("min_keyword_hits", 1),
+                    "year_range": constraints.get("year_range", 3),
+                    "methodology_types": constraints.get("methodology_types", []),
+                    "custom_criteria": {
+                        "research_question": result.research_question.question.question,
+                        "sub_questions": result.research_question.question.sub_questions
+                    }
+                }
+                
+                screened_papers = await self.abstract_agent.screen_papers(
+                    papers=result.papers,
+                    criteria=screening_criteria
+                )
                 
                 # Format and store screening results
                 screening_results = [{
@@ -185,19 +239,25 @@ class SystematicReviewWorkflow:
                         "total_papers": len(screened_papers),
                         "high_relevance": sum(1 for p in screened_papers if p.relevance_score > 0.7),
                         "medium_relevance": sum(1 for p in screened_papers if 0.4 <= p.relevance_score <= 0.7),
-                        "low_relevance": sum(1 for p in screened_papers if p.relevance_score < 0.4)
+                        "low_relevance": sum(1 for p in screened_papers if p.relevance_score < 0.4),
+                        "average_keyword_hits": sum(p.get('metadata', {}).get('total_hits', 0) for p in result.papers) / len(result.papers) if result.papers else 0,
+                        "keyword_statistics": {
+                            keyword: sum(p.get('metadata', {}).get('keyword_counts', {}).get(keyword, 0) for p in result.papers)
+                            for keyword in result.search_strategy.keywords
+                        }
                     },
                     "timestamp": datetime.now().isoformat()
                 }]
                 
                 result.screened_papers = screening_results
                 
-                # Store screening results
+                # Store screening results with enhanced statistics
                 push_to_firebase(
                     "screening_results",
                     {
                         "workflow_id": self.workflow_id,
-                        "screening_results": screening_results
+                        "screening_results": screening_results,
+                        "search_strategy": result.search_strategy.model_dump()
                     }
                 )
             

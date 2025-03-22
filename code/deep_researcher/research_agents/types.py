@@ -25,7 +25,7 @@ class WorkflowResult(BaseModel):
 
 class SearchStrategy(BaseModel):
     """Search strategy with keywords and constraints."""
-    keywords: List[str] = Field(..., description="List of search keywords")
+    keywords: List[str] = Field(default_factory=list, description="List of search keywords")
     #combinations: List[str] = Field(..., description="Boolean combinations of keywords")
     constraints: Dict[str, Any] = Field(default_factory=dict, description="Search constraints")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata about the search strategy")
@@ -33,13 +33,13 @@ class SearchStrategy(BaseModel):
 # Research Question Types
 class Question(BaseModel):
     """Structure for research questions."""
-    question: str
-    sub_questions: List[str]
+    question: str = Field(default="")
+    sub_questions: List[str] = Field(default_factory=list)
 
 class ResearchQuestion(BaseModel):
     """Complete research question with validation."""
     question: Question
-    validation: Dict[str, bool]
+    validation: Dict[str, bool] = Field(default_factory=dict)
 
 class KeywordSet(BaseModel):
     """Keyword set for literature search."""
@@ -54,28 +54,28 @@ class PaperResult(BaseModel):
     paper_id: str
     title: str
     abstract: str
-    metadata: Dict[str, Any]
+    metadata: Dict[str, Any] = Field(default_factory=dict)
 
 class ScreenedPaper(BaseModel):
     """Structure for screened paper results."""
     paper_id: str
     title: str
     abstract: str
-    metadata: Dict[str, Any]
-    relevance_score: float
-    inclusion_criteria: Dict[str, bool]
-    priority_rank: int
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    relevance_score: float = 0.0
+    inclusion_criteria: Dict[str, bool] = Field(default_factory=dict)
+    priority_rank: int = 0
 
 # Input/Output Types for Agents
 class FormulateQuestionInput(BaseModel):
     """Input for question formulation."""
     research_area: str
-    constraints: Dict[str, Any]
+    constraints: Dict[str, Any] = Field(default_factory=dict)
 
 class FormulateQuestionOutput(BaseModel):
     """Output from question formulation."""
     question: Question
-    validation: Dict[str, bool]
+    validation: Dict[str, bool] = Field(default_factory=dict)
 
 class KeywordAnalysisInput(BaseModel):
     """Input for keyword analysis."""
@@ -83,9 +83,9 @@ class KeywordAnalysisInput(BaseModel):
 
 class KeywordAnalysisOutput(BaseModel):
     """Output from keyword analysis."""
-    keywords: List[str]
+    keywords: List[str] = Field(default_factory=list)
     #combinations: List[str]
-    constraints: Dict[str, Any]
+    constraints: Dict[str, Any] = Field(default_factory=dict)
 
 class AbstractScreeningInput(BaseModel):
     """Input for abstract screening."""
@@ -95,4 +95,4 @@ class AbstractScreeningInput(BaseModel):
 class AbstractScreeningOutput(BaseModel):
     """Output from abstract screening."""
     screened_papers: List[ScreenedPaper] = Field(..., description="Screened papers with results")
-    summary: Dict[str, Any] = Field(..., description="Summary of screening results") 
+    summary: Dict[str, Any] = Field(default_factory=dict, description="Summary of screening results") 
